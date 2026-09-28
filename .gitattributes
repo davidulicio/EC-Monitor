@@ -1,0 +1,13 @@
+# Shell and Python scripts must keep LF endings or the CI runner refuses to
+# execute them ("bad interpreter: /bin/bash^M"). This holds even when the
+# working copy is edited on Windows.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# Never touched by line ending conversion.
+*.png      binary
+*.apk      binary
+*.keystore binary
+*.jks      binary

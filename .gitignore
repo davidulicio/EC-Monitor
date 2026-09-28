@@ -1,0 +1,29 @@
+# Build output
+build/
+gen/
+classes/
+out-test/
+out-rep/
+*.class
+*.dex
+*.apk
+*.ap_
+
+# Signing keys never belong in the repository.
+# Keep debug.keystore safe locally: Android only accepts an update to an
+# installed app if the new build carries the same signature.
+*.keystore
+*.jks
+*.p12
+
+# Local station lists exported from the app may contain real tower addresses.
+stations*.json
+
+# Editors and platforms
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc

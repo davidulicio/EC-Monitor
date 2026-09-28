@@ -1,0 +1,81 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # The secrets context cannot be read from a step's `if`, so the presence of
+    # the signing key is hoisted into an environment variable here.
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Android toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            aapt apksigner zipalign \
+            android-sdk-build-tools android-sdk-platform-23 \
+            dalvik-exchange default-jdk-headless
+
+      - name: Run the test suite
+        run: bash ./tools/run-tests.sh
+
+      # Reuse the same signing key across builds so phones accept an update
+      # instead of demanding an uninstall. Without the secret a throwaway key is
+      # generated, which is fine for a one-off build but not for updates.
+      - name: Restore the signing key
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_B64" | base64 -d > debug.keystore
+
+      - name: Warn when no signing key is configured
+        if: env.HAS_KEYSTORE != 'true'
+        run: |
+          echo "::warning::No ANDROID_KEYSTORE_BASE64 secret set."
+          echo "::warning::This build gets a fresh key, so it cannot update an already installed copy."
+
+      - name: Build the APK
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'android' }}
+        run: bash ./build.sh
+
+      - name: Name the build
+        id: name
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            NAME="ec-monitor-${GITHUB_REF_NAME}.apk"
+          else
+            NAME="ec-monitor-$(git rev-parse --short HEAD).apk"
+          fi
+          cp build/ec-monitor.apk "$NAME"
+          echo "apk=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.apk }}
+          path: ${{ steps.name.outputs.apk }}
+          retention-days: 90
+
+      - name: Attach the APK to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "${{ steps.name.outputs.apk }}" \
+            --title "EC Monitor ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            || gh release upload "${GITHUB_REF_NAME}" "${{ steps.name.outputs.apk }}" --clobber
